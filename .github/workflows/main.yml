@@ -1,0 +1,42 @@
+name: Build APK
+on: [push, workflow_dispatch]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - name: Unzip project
+        run: for f in *.zip; do unzip -q -o "$f"; done
+      - name: Build app and tests
+        working-directory: MyMusicPlayer
+        run: chmod +x gradlew && ./gradlew assembleDebug assembleDebugAndroidTest
+      - name: Enable emulator acceleration
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Test on Android emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          arch: x86_64
+          target: google_apis
+          disable-animations: true
+          working-directory: MyMusicPlayer
+          script: ./gradlew connectedDebugAndroidTest
+      - name: Upload APK (only if tests passed)
+        uses: actions/upload-artifact@v4
+        with:
+          name: MyMusicPlayer-apk
+          path: MyMusicPlayer/app/build/outputs/apk/debug/app-debug.apk
+      - name: Upload test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-report
+          path: MyMusicPlayer/app/build/reports/androidTests/
